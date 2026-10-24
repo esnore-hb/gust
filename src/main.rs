@@ -1,26 +1,38 @@
-use ratatui::{DefaultTerminal, Frame};
-use sha1::{Digest, Sha1};
-use std::{env, fs};
+use std::{env, fs, io};
 
-use std::io;
-
-use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind};
+use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 use ratatui::{
-    buffer::Buffer,
-    layout::Rect,
+    DefaultTerminal, Frame,
+    layout::{Constraint, Layout},
     style::Stylize,
     symbols::border,
     text::{Line, Text},
-    widgets::{Block, Paragraph, Widget},
+    widgets::{Block, Paragraph, Wrap},
 };
+use sha1::{Digest, Sha1};
+
+/// Hash to compare against (replace with the one you need).
+const EXPECTED_HASH: &str = "00e9c04bd4c8534bea1a2f26a7882765cd06fd7e";
 
 #[derive(Debug, Default)]
 struct App {
-    path: String,
+    /// Text typed by the user (file path).
+    input: String,
+    /// Result of the last hash computation: Ok(hash) or Err(message).
+    result: Option<Result<String, String>>,
     exit: bool,
 }
 
 impl App {
+    fn new(initial_path: Option<String>) -> Self {
+        let mut app = App::default();
+        if let Some(path) = initial_path {
+            app.input = path;
+            app.compute_hash();
+        }
+        app
+    }
+
     pub fn run(&mut self, terminal: &mut DefaultTerminal) -> io::Result<()> {
         while !self.exit {
             terminal.draw(|frame| self.draw(frame))?;
@@ -30,64 +42,100 @@ impl App {
     }
 
     fn draw(&self, frame: &mut Frame) {
-        frame.render_widget(self, frame.area());
+        let [input_area, result_area] =
+            Layout::vertical([Constraint::Length(3), Constraint::Min(5)]).areas(frame.area());
+
+        // --- Input box ---
+        let input_block = Block::bordered()
+            .title(Line::from(" File path ".bold()).centered())
+            .border_set(border::THICK);
+        frame.render_widget(
+            Paragraph::new(self.input.as_str().yellow()).block(input_block),
+            input_area,
+        );
+
+        // Place the terminal cursor at the end of the typed text.
+        let max_x = input_area.right().saturating_sub(2);
+        let cursor_x = (input_area.x + 1 + self.input.chars().count() as u16).min(max_x);
+        frame.set_cursor_position((cursor_x, input_area.y + 1));
+
+        // --- Result box ---
+        let instructions = Line::from(vec![
+            " Compute ".into(),
+            "<Enter>".blue().bold(),
+            " Clear ".into(),
+            "<Ctrl+U>".blue().bold(),
+            " Quit ".into(),
+            "<Esc> ".blue().bold(),
+        ]);
+        let result_block = Block::bordered()
+            .title(Line::from(" SHA-1 ".bold()).centered())
+            .title_bottom(instructions.centered())
+            .border_set(border::THICK);
+
+        let text = match &self.result {
+            None => Text::from("Type a file path and press Enter.".dim()),
+            Some(Ok(hash)) => {
+                let verdict = if hash == EXPECTED_HASH {
+                    "Matches the expected hash".green().bold()
+                } else {
+                    "Does not match the expected hash".red().bold()
+                };
+                Text::from(vec![
+                    Line::from(vec!["SHA-1: ".into(), hash.clone().green()]),
+                    Line::from(""),
+                    Line::from(verdict),
+                ])
+            }
+            Some(Err(message)) => Text::from(Line::from(message.clone().red())),
+        };
+
+        frame.render_widget(
+            Paragraph::new(text)
+                .centered()
+                .wrap(Wrap { trim: false })
+                .block(result_block),
+            result_area,
+        );
     }
 
     fn handle_events(&mut self) -> io::Result<()> {
-        match event::read()?{
-            Event::Key(key_event) if key_event.kind == KeyEventKind::Press => {
-                self.handle_key_event(key_event)
+        if let Event::Key(key_event) = event::read()? {
+            if key_event.kind == KeyEventKind::Press {
+                self.handle_key_event(key_event);
             }
-            _ => {}
-        };
+        }
         Ok(())
     }
 
     fn handle_key_event(&mut self, key_event: KeyEvent) {
+        let ctrl = key_event.modifiers.contains(KeyModifiers::CONTROL);
         match key_event.code {
-            KeyCode::Char('q') => self.exit(),
-            KeyCode::Left => self.decrement_counter(),
-            KeyCode::Right => self.increment_counter(),
+            KeyCode::Esc => self.exit = true,
+            KeyCode::Char('c') if ctrl => self.exit = true,
+            KeyCode::Char('u') if ctrl => {
+                self.input.clear();
+                self.result = None;
+            }
+            KeyCode::Enter => self.compute_hash(),
+            KeyCode::Backspace => {
+                self.input.pop();
+            }
+            KeyCode::Char(c) if !ctrl => self.input.push(c),
             _ => {}
         }
     }
 
-        fn exit(&mut self) {
-        self.exit = true;
-    }
+    fn compute_hash(&mut self) {
+        // Terminals often paste paths wrapped in quotes; strip them.
+        let path = self.input.trim().trim_matches(|c| c == '"' || c == '\'');
 
-    fn increment_counter(&mut self) {
-    }
+        if path.is_empty() {
+            self.result = Some(Err("Please enter a file path.".to_string()));
+            return;
+        }
 
-    fn decrement_counter(&mut self) {
-    }
-}
-
-impl Widget for &App {
-    fn render(self, area: Rect, buf: &mut Buffer) {
-        let title = Line::from(" Counter App Tutorial ".bold());
-        let instructions = Line::from(vec![
-            " Decrement ".into(),
-            "<Left>".blue().bold(),
-            " Increment ".into(),
-            "<Right>".blue().bold(),
-            " Quit ".into(),
-            "<Q> ".blue().bold(),
-        ]);
-        let block = Block::bordered()
-            .title(title.centered())
-            .title_bottom(instructions.centered())
-            .border_set(border::THICK);
-
-        let counter_text = Text::from(vec![Line::from(vec![
-            "Value: ".into(),
-            self.path.to_string().yellow(),
-        ])]);
-
-        Paragraph::new(counter_text)
-            .centered()
-            .block(block)
-            .render(area, buf);
+        self.result = Some(to_blob(path).map_err(|e| format!("Could not read '{path}': {e}")));
     }
 }
 
@@ -99,59 +147,19 @@ struct Commit {
 
 struct Tree {}
 
-fn to_blob(file_path: &str) -> String {
-    let contents = fs::read(file_path)
-        .expect("Error reading file");
+fn to_blob(file_path: &str) -> io::Result<String> {
+    let contents = fs::read(file_path)?;
 
     let mut hasher = Sha1::new();
     hasher.update(&contents);
 
     let hash = hasher.finalize();
-    let hash_string = hash.iter()
-        .map(|byte| format!("{:02x}", byte))
-        .collect::<String>();
-
-    hash_string
+    Ok(hash.iter().map(|byte| format!("{:02x}", byte)).collect())
 }
 
 fn main() -> io::Result<()> {
-    let args: Vec<String> = env::args().collect();
+    // Optional: a path passed on the command line pre-fills the input.
+    let initial_path = env::args().nth(1);
 
-    let (_query, file_path) = parse_config(&args);
-
-    let hash = to_blob(file_path);
-
-    println!("SHA-1: {}", hash);
-
-    // Ahora puedes comparar el hash con otro String.
-    let other_hash = String::from("00e9c04bd4c8534bea1a2f26a7882765cd06fd7e");
-
-    if hash == other_hash {
-        println!("Los hashes coinciden");
-    }
-
-
-    // Run TUI
-    ratatui::run(|terminal| App::default().run(terminal));
-    Ok(())
-}
-
-fn parse_config(args: &[String]) -> (&str, &str) {
-    let query = &args[1];
-    let file_path = &args[2];
-
-    (query, file_path)
-}
-
-fn app(terminal: &mut DefaultTerminal) -> std::io::Result<()> {
-    loop {
-        terminal.draw(render)?;
-        if crossterm::event::read()?.is_key_press() {
-            break Ok(());
-        }
-    }
-}
-
-fn render(frame: &mut Frame) {
-    frame.render_widget("hello world", frame.area());
+    ratatui::run(|terminal| App::new(initial_path).run(terminal))
 }

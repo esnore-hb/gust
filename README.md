@@ -4,12 +4,14 @@ An user-friendly Git terminal written in Rust
 
 ## How to run
 
-Los guiones son para decir que le pasas como argumentos todo lo que va después
-de ellos. Esto se lo pasa al binario compilado, el cual también se puede
-ejecutar por separado en `./target/debug/gust`
+Al compilar el proyecto, va a lanzar un interfaz donde se puede ingresar la ruta
+de un archivo, por ejemplo `src/poem.txt` y le va a calcular el SHA-1. Luego
+verifica que sea igual a una constante que se tiene en `main.rs`. También se
+puede probar con `src/lorem.txt`, el cual muestra su SHA-1, pero no es el mismo
+que del anterior archivo.
 
 ```bash
-cargo run -- word src/poem.txt
+cargo run
 ```
 
 ## Goals (Minimum Viable Scope)
