@@ -20,6 +20,8 @@ target
 #  option (not recommended) you can uncomment the following to ignore the entire idea folder.
 #.idea/
 
+# Gust logic and meta_dir
+.gust
 
 # Added by cargo
 
