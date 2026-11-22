@@ -1,6 +1,7 @@
 mod objects;
 mod store;
 mod working_tree;
+mod hash;
 
 use crate::objects::Blob;
 
