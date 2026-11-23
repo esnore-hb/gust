@@ -1,6 +1,8 @@
 
 
 
+use std::io::Write;
+
 /// # HashStrategy
 /// Define el algoritmo que se usará para calcular el hash (ej. SHA-1 o SHA-256).
 /// 
@@ -56,7 +58,13 @@ pub trait GitObject: Serializable {
     /// Genera y retorna el id del objeto mezclando su *header* y sus datos serializados
     fn id(&self) -> <Self::H as HashStrategy>::Digest {
         let body = self.serialize();
-        let mut buf = format!("{} {}\0", Self::KIND, body.len()).into_bytes(); 
+        let len = body.len();
+        // Cantidad de dígitos decimales de `len` (el 0 también ocupa un dígito)
+        let len_digits = len.checked_ilog10().unwrap_or(0) as usize + 1;
+
+        let mut buf = Vec::with_capacity(Self::KIND.len() + 1 + len_digits + 1 + len);
+        // `write!` escribe directo en el Vec, sin crear un String intermedio
+        write!(buf, "{} {}\0", Self::KIND, len).expect("escribir en un Vec no falla");
         buf.extend_from_slice(&body);
         Self::H::hash(&buf)
     }
