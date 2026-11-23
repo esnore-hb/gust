@@ -112,6 +112,27 @@ pub struct Tree<H: HashStrategy> {
     pub entries: Vec<TreeEntry<H>>,
 }
 
+impl<H: HashStrategy> Serializable for Tree<H> {
+    /// Concatena las entradas serializadas, ordenadas por los bytes de su nombre.
+    ///
+    /// El orden garantiza que el mismo directorio produzca siempre los mismos bytes,
+    /// sin importar el orden en que se insertaron las entradas.
+    fn serialize(&self) -> Vec<u8> {
+        // Se ordenan referencias para no modificar ni clonar las entradas
+        let mut sorted: Vec<&TreeEntry<H>> = self.entries.iter().collect();
+        sorted.sort_unstable_by(|a, b| a.name.as_bytes().cmp(b.name.as_bytes()));
+
+        let total_len: usize = sorted.iter().map(|e| e.serialized_len()).sum();
+        let mut buff = Vec::with_capacity(total_len);
+
+        for entry in sorted {
+            entry.write_into(&mut buff);
+        }
+
+        buff
+    }
+}
+
 /// # Meta
 /// Agrupa metadatos flexibles en pares clave-valor para describir un [`Commit`]
 /// (ej. `"author"`, `"committer"` o `"date"`).
