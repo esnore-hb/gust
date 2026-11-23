@@ -18,6 +18,8 @@ pub struct Blob<H: HashStrategy> {
 
 impl <H: HashStrategy>Serializable for Blob<H> {
     /// Devuelve una copia de los bytes crudos del archivo.
+    ///
+    /// Formato: `<content>`, sin header ni separadores.
     fn serialize(&self) -> Vec<u8> {
         self.content.clone()
     }
@@ -113,7 +115,10 @@ pub struct Tree<H: HashStrategy> {
 }
 
 impl<H: HashStrategy> Serializable for Tree<H> {
+    /// Formato: `<entry_1><entry_2>...<entry_n>`, ver [`TreeEntry`].
+    ///
     /// Concatena las entradas serializadas, ordenadas por los bytes de su nombre.
+    /// Un [`Tree`] vacío produce 0 bytes.
     ///
     /// El orden garantiza que el mismo directorio produzca siempre los mismos bytes,
     /// sin importar el orden en que se insertaron las entradas.
@@ -151,6 +156,7 @@ pub struct Meta {
 
 
 impl Serializable for BTreeMap<String, String> {
+    /// Formato: una línea `<key> <value>\n` por cada par, en orden alfabético de clave.
     fn serialize(&self) -> Vec<u8> {
         let total_len: usize = self
             .iter()
@@ -170,6 +176,7 @@ impl Serializable for BTreeMap<String, String> {
 }
 
 impl Serializable for Meta {
+    /// Formato: el mismo que su [`BTreeMap`], `<key> <value>\n` por cada campo.
     fn serialize(&self) -> Vec<u8> {
         self.fields.serialize()
     }
