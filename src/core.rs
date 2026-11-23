@@ -85,6 +85,33 @@ pub struct Meta {
     pub fields: BTreeMap<String, String>,
 }
 
+
+impl Serializable for BTreeMap<String, String> {
+    fn serialize(&self) -> Vec<u8> {
+        let total_len: usize = self
+            .iter()
+            .map(|(k, v)| k.len() + v.len() + 2)
+            .sum();
+        let mut buff = Vec::with_capacity(total_len); 
+
+        for (key, value) in self {
+            buff.extend_from_slice(key.as_bytes());
+            buff.push(b' ');
+            buff.extend_from_slice(value.as_bytes());
+            buff.push(b'\n');
+        }
+        
+        buff
+    }
+}
+
+impl Serializable for Meta {
+    fn serialize(&self) -> Vec<u8> {
+        self.fields.serialize()
+    }
+}
+
+
 /// # Commit
 /// Representa un *snapshot* del proyecto en un punto concreto del historial
 /// 
