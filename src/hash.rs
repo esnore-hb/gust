@@ -1,11 +1,8 @@
-
-
-
 use std::io::Write;
 
 /// # HashStrategy
 /// Define el algoritmo que se usará para calcular el hash (ej. SHA-1 o SHA-256).
-/// 
+///
 /// Sirve para desacoplar las estructuras del proyecto del algoritmo específico,
 /// permitiendo cambiar cómo se calcula el hash sin tocar el resto del código
 pub trait HashStrategy {
@@ -25,23 +22,22 @@ pub trait Serializable {
     fn serialize(&self) -> Vec<u8>;
 }
 
-
 /// # GitObject
 /// Permite que un objeto genere su propio ID único al estilo de Git.
-/// 
+///
 /// Para calcular el ID, concatena el tipo de objeto (`KIND`), su tamaño en bytes,
 /// un carácter nulo (`\0`) y su contenido serializado, y luego aplica el hash.
-/// 
+///
 /// ## Ejemplo
 /// ```ignore
 /// struct Blob { content: Vec<u8> };
-/// 
+///
 /// impl Serializable for Blob {
 ///     fn serialize(&self) -> Vec<u8> {
-///         self.content 
+///         self.content
 ///     }
 /// }
-/// 
+///
 /// impl GitObject for Blob {
 ///     type H = HashKetchum // algoritmo de Hash a utilizar
 ///     const KIND: &'static str = "blob";
