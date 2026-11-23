@@ -260,3 +260,8 @@ impl<H: HashStrategy> Serializable for Commit<H> {
         buff
     }
 }
+
+impl<H: HashStrategy> GitObject for Commit<H> {
+    type H = H;
+    const KIND: &'static str = "commit";
+}
