@@ -50,6 +50,44 @@ pub struct TreeEntry<H: HashStrategy> {
     pub hash: H::Digest,
 }
 
+impl EntryKind {
+    /// Devuelve el nombre del tipo, igual al `KIND` del objeto referenciado.
+    fn as_str(&self) -> &'static str {
+        match self {
+            EntryKind::Blob => "blob",
+            EntryKind::Tree => "tree",
+        }
+    }
+}
+
+impl<H: HashStrategy> TreeEntry<H> {
+    /// Cantidad exacta de bytes que ocupa la entrada serializada.
+    fn serialized_len(&self) -> usize {
+        self.kind.as_str().len() + 1 + self.name.len() + 1 + self.hash.as_ref().len()
+    }
+
+    /// Escribe la entrada serializada al final de `buff`, sin reservas intermedias.
+    fn write_into(&self, buff: &mut Vec<u8>) {
+        buff.extend_from_slice(self.kind.as_str().as_bytes());
+        buff.push(b' ');
+        buff.extend_from_slice(self.name.as_bytes());
+        buff.push(0);
+        buff.extend_from_slice(self.hash.as_ref());
+    }
+}
+
+impl<H: HashStrategy> Serializable for TreeEntry<H> {
+    /// Formato: `<kind> <name>\0<digest crudo>`.
+    ///
+    /// El nombre termina en `\0` porque no puede aparecer en un nombre de archivo,
+    /// y el digest tiene largo fijo, por lo que no necesita separador final.
+    fn serialize(&self) -> Vec<u8> {
+        let mut buff = Vec::with_capacity(self.serialized_len());
+        self.write_into(&mut buff);
+        buff
+    }
+}
+
 /// # Tree
 /// Representa un *snapshot* de un directorio mediante la lista de sus entradas.
 /// 
