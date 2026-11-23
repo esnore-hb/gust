@@ -206,3 +206,57 @@ pub struct Commit<H: HashStrategy> {
     /// Metadatos asociados al commit, como autor, fecha, etc.
     pub meta: Meta,
 }
+
+impl<H: HashStrategy> Serializable for Commit<H> {
+    /// Formato:
+    /// ```text
+    /// tree <digest raíz>\n
+    /// parent <digest>\n      (0 o más, en orden de inserción)
+    /// \n
+    /// <meta: key value\n ...>
+    /// \n
+    /// <message>
+    /// ```
+    /// Los prefijos y las líneas en blanco separan cada sección sin ambigüedad,
+    /// incluso si un digest crudo contiene el byte `\n`. El mensaje va al final,
+    /// por lo que puede contener cualquier texto.
+    fn serialize(&self) -> Vec<u8> {
+        const TREE: &[u8] = b"tree ";
+        const PARENT: &[u8] = b"parent ";
+
+        let meta = self.meta.serialize();
+        let parents_len: usize = self
+            .parents
+            .iter()
+            .map(|p| PARENT.len() + p.as_ref().len() + 1)
+            .sum();
+        let total_len = TREE.len()
+            + self.root_hash.as_ref().len()
+            + 1
+            + parents_len
+            + 1
+            + meta.len()
+            + 1
+            + self.message.len();
+        let mut buff = Vec::with_capacity(total_len);
+
+        buff.extend_from_slice(TREE);
+        buff.extend_from_slice(self.root_hash.as_ref());
+        buff.push(b'\n');
+
+        // Orden de inserción: el primer padre es la rama donde se hizo el merge
+        for parent in &self.parents {
+            buff.extend_from_slice(PARENT);
+            buff.extend_from_slice(parent.as_ref());
+            buff.push(b'\n');
+        }
+        buff.push(b'\n');
+
+        buff.extend_from_slice(&meta);
+        buff.push(b'\n');
+
+        buff.extend_from_slice(self.message.as_bytes());
+
+        buff
+    }
+}
