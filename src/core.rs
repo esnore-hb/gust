@@ -1,12 +1,10 @@
-
-
 use std::{collections::BTreeMap, marker::PhantomData};
 
 use crate::hash::{self, GitObject, HashStrategy, Serializable};
 
 /// # Blob
 /// Representa el contenido crudo de un archivo como secuencia de bytes (*Binary Large Object*)
-/// 
+///
 /// Solo guarda los datos del archivo, sin su nombre ni permisos. El parámetro genérico `H`
 /// define la [`HashStrategy`] con la que se calculará su id al usarlo como [`GitObject`].
 pub struct Blob<H: HashStrategy> {
@@ -16,7 +14,7 @@ pub struct Blob<H: HashStrategy> {
     _h: PhantomData<H>,
 }
 
-impl <H: HashStrategy>Serializable for Blob<H> {
+impl<H: HashStrategy> Serializable for Blob<H> {
     /// Devuelve una copia de los bytes crudos del archivo.
     ///
     /// Formato: `<content>`, sin header ni separadores.
@@ -25,7 +23,7 @@ impl <H: HashStrategy>Serializable for Blob<H> {
     }
 }
 
-impl <H: HashStrategy>GitObject for Blob<H> {
+impl<H: HashStrategy> GitObject for Blob<H> {
     type H = H;
     const KIND: &'static str = "blob";
 }
@@ -41,7 +39,7 @@ pub enum EntryKind {
 
 /// # TreeEntry
 /// Representa un elemento individual de un directorio ([`Tree`]).
-/// 
+///
 /// Vincula un nombre con el tipo de objeto y el hash que lo identifica.
 pub struct TreeEntry<H: HashStrategy> {
     /// Tipo de objeto que referencia (archivo o subdirectorio)
@@ -92,7 +90,7 @@ impl<H: HashStrategy> Serializable for TreeEntry<H> {
 
 /// # Tree
 /// Representa un *snapshot* de un directorio mediante la lista de sus entradas.
-/// 
+///
 /// Similar a Git, no guarda el contenido de los archivos directamente, sino referencias ([`TreeEntry`])
 /// a cada archivo o subcarpeta.
 /// ## Ejemplo
@@ -102,10 +100,10 @@ impl<H: HashStrategy> Serializable for TreeEntry<H> {
 ///     name: String::from("README.md"),
 ///     hash: blob_id,
 /// };
-/// // No guarda archivos, ya que no almacena ningún blob. 
+/// // No guarda archivos, ya que no almacena ningún blob.
 /// // En algún momento se procesó el blob del archivo y
 /// // se calculó su hash.
-/// 
+///
 /// let dir = Tree {
 ///     entries: vec![file_entry],
 /// };
@@ -146,7 +144,7 @@ impl<H: HashStrategy> GitObject for Tree<H> {
 /// # Meta
 /// Agrupa metadatos flexibles en pares clave-valor para describir un [`Commit`]
 /// (ej. `"author"`, `"committer"` o `"date"`).
-/// 
+///
 /// Usa un [`BTreeMap`] para mantener las claves **ordenadas** alfabéticamente,
 /// lo que garantiza siempre la misma serialización de los mismos metadatos.
 pub struct Meta {
@@ -154,15 +152,11 @@ pub struct Meta {
     pub fields: BTreeMap<String, String>,
 }
 
-
 impl Serializable for BTreeMap<String, String> {
     /// Formato: una línea `<key> <value>\n` por cada par, en orden alfabético de clave.
     fn serialize(&self) -> Vec<u8> {
-        let total_len: usize = self
-            .iter()
-            .map(|(k, v)| k.len() + v.len() + 2)
-            .sum();
-        let mut buff = Vec::with_capacity(total_len); 
+        let total_len: usize = self.iter().map(|(k, v)| k.len() + v.len() + 2).sum();
+        let mut buff = Vec::with_capacity(total_len);
 
         for (key, value) in self {
             buff.extend_from_slice(key.as_bytes());
@@ -170,7 +164,7 @@ impl Serializable for BTreeMap<String, String> {
             buff.extend_from_slice(value.as_bytes());
             buff.push(b'\n');
         }
-        
+
         buff
     }
 }
@@ -182,13 +176,12 @@ impl Serializable for Meta {
     }
 }
 
-
 /// # Commit
 /// Representa un *snapshot* del proyecto en un punto concreto del historial
-/// 
+///
 /// Contiene el [`Tree`] de la raíz con los *commits* padres que le dieron origen,
 /// junto a un mensaje descriptivo y sus metadatos (ej. `"author"`, `"committer"` o `"date"`).
-/// 
+///
 /// ## Ejemplo
 /// ```ignore
 /// // Definimos los metadatos básicos del commit
@@ -201,7 +194,7 @@ impl Serializable for Meta {
 ///     parents: vec![parent_commit_id],
 ///     message: String::from("feat: Agrega soporte inicial para commits"),
 ///     meta: Meta { fields },
-/// }; 
+/// };
 /// ```
 pub struct Commit<H: HashStrategy> {
     ///  Hash del directorio raíz del proyecto, es decir, del [`Tree`] raíz. Captura el estado completo del proyecto
