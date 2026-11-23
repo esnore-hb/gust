@@ -7,7 +7,7 @@ use crate::hash::{self, GitObject, HashStrategy, Serializable};
 /// # Blob
 /// Representa el contenido crudo de un archivo como secuencia de bytes (*Binary Large Object*)
 /// 
-/// Solo guarda los datos del archivo, sin u nombre ni permisos. El parámetro genérico `H`
+/// Solo guarda los datos del archivo, sin su nombre ni permisos. El parámetro genérico `H`
 /// define la [`HashStrategy`] con la que se calculará su id al usarlo como [`GitObject`].
 pub struct Blob<H: HashStrategy> {
     /// Contenido crudo almacenado como un vector de bytes
@@ -131,8 +131,9 @@ impl Serializable for Meta {
 ///     message: String::from("feat: Agrega soporte inicial para commits"),
 ///     meta: Meta { fields },
 /// }; 
+/// ```
 pub struct Commit<H: HashStrategy> {
-    ///  del directorio raíz del proyecto, es decir, del [`Tree`] raíz. Captura el estado completo del proyecto
+    ///  Hash del directorio raíz del proyecto, es decir, del [`Tree`] raíz. Captura el estado completo del proyecto
     pub root_hash: H::Digest,
     /// Hash de los commits padres (vacío en el commit raíz, 2+ en un merge)
     pub parents: Vec<H::Digest>,
