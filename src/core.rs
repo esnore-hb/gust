@@ -133,6 +133,11 @@ impl<H: HashStrategy> Serializable for Tree<H> {
     }
 }
 
+impl<H: HashStrategy> GitObject for Tree<H> {
+    type H = H;
+    const KIND: &'static str = "tree";
+}
+
 /// # Meta
 /// Agrupa metadatos flexibles en pares clave-valor para describir un [`Commit`]
 /// (ej. `"author"`, `"committer"` o `"date"`).
