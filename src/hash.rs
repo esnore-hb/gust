@@ -121,6 +121,45 @@ pub trait GitObject: Serializable {
         buf
     }
 
+    /// Valida el *header* (`<KIND> <len>\0`) de `raw` y deserializa el cuerpo en `Self`.
+    ///
+    /// Es la operación inversa de [`GitObject::encode`].
+    fn decode(raw: &[u8]) -> Result<Self, DeserializeError>
+    where
+        Self: Deserializable,
+    {
+        // busca \0
+        let nul = raw
+            .iter()
+            .position(|&b| b == 0)
+            .ok_or(DeserializeError::UnexpectedEof)?;
+        // Validación del header
+        let header = std::str::from_utf8(&raw[..nul])?;
+        let (kind, len_str) = header
+            .split_once(' ')
+            .ok_or(DeserializeError::InvalidFormat(
+                "header sin separador de espacio",
+            ))?;
+
+        if kind != Self::KIND {
+            return Err(DeserializeError::InvalidFormat(
+                "tipo de objeto inesperado",
+            ));
+        }
+
+        let expected_len: usize = len_str
+            .parse()
+            .map_err(|_| DeserializeError::InvalidFormat("largo inválido en header"))?;
+        let body = &raw[nul + 1..];
+        if body.len() != expected_len {
+            return Err(DeserializeError::InvalidFormat(
+                "el largo del cuerpo no coincide con el header",
+            ));
+        }
+
+        Self::deserialize(body)
+    }
+
     /// Devuelve el id del objeto: el *hash* de [`GitObject::encode`].
     fn id(&self) -> <Self::H as HashStrategy>::Digest {
         Self::H::hash(&self.encode())
