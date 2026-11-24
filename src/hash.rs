@@ -28,6 +28,8 @@ pub trait Serializable {
     fn serialize(&self) -> Vec<u8>;
 }
 
+/*--------MANEJO DE ERRORES DE *Deserialización*---------- */
+
 /// # DeserializeError
 /// Error producido al reconstruir un objeto desde una secuencia de bytes.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -64,6 +66,8 @@ impl From<Utf8Error> for DeserializeError {
         Self::InvalidUtf8(err)
     }
 }
+
+/*---------------- */
 
 /// # Deserializable
 /// Permite reconstruir una estructura a partir de una secuencia de bytes.
