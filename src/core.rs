@@ -110,6 +110,14 @@ impl<H: HashStrategy> TreeEntry<H> {
             .position(|&b| b == 0)
             .ok_or(DeserializeError::UnexpectedEof)?;
         let name = std::str::from_utf8(&rest[..nul])?;
+        // Un nombre debe ser un único componente de ruta. Se rechazan "", ".", ".." y
+        // nombres con "/" para que un *tree* corrupto o malicioso no pueda, al restaurar
+        // el directorio de trabajo, escribir archivos fuera del repositorio (ej. "../../etc").
+        if matches!(name, "" | "." | "..") || name.contains('/') {
+            return Err(DeserializeError::InvalidFormat(
+                "nombre de entrada inválido",
+            ));
+        }
         let after_nul = &rest[nul + 1..];
 
         if after_nul.len() < H::DIGEST_LEN {
