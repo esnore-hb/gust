@@ -321,6 +321,24 @@ pub struct Commit<H: HashStrategy> {
     pub meta: Meta,
 }
 
+/// Extrae `<digest>\n` desde el inicio de `bytes`, validando el largo y el salto de línea final.
+fn parse_digest_line<H: HashStrategy>(
+    bytes: &[u8],
+) -> Result<(H::Digest, &[u8]), DeserializeError> {
+    if bytes.len() < H::DIGEST_LEN + 1 {
+        return Err(DeserializeError::UnexpectedEof);
+    }
+    let (digest_bytes, rest) = bytes.split_at(H::DIGEST_LEN);
+    let rest = rest
+        .strip_prefix(b"\n")
+        .ok_or(DeserializeError::InvalidFormat(
+            "se esperaba '\\n' tras el digest",
+        ))?;
+    let digest = H::digest_from_bytes(digest_bytes)
+        .ok_or(DeserializeError::InvalidFormat("largo de digest inválido"))?;
+    Ok((digest, rest))
+}
+
 impl<H: HashStrategy> Serializable for Commit<H> {
     /// Formato:
     /// ```text
@@ -372,6 +390,56 @@ impl<H: HashStrategy> Serializable for Commit<H> {
         buff.extend_from_slice(self.message.as_bytes());
 
         buff
+    }
+}
+
+impl<H: HashStrategy> Deserializable for Commit<H> {
+    /// Reconstruye un [`Commit`] a partir del formato producido por [`Serializable::serialize`].
+    fn deserialize(bytes: &[u8]) -> Result<Self, DeserializeError> {
+        const TREE: &[u8] = b"tree ";
+        const PARENT: &[u8] = b"parent ";
+
+        let rest = bytes
+            .strip_prefix(TREE)
+            .ok_or(DeserializeError::InvalidFormat("falta prefijo tree"))?;
+        let (root_hash, mut rest) = parse_digest_line::<H>(rest)?;
+
+        let mut parents = Vec::new();
+        while let Some(after_parent) = rest.strip_prefix(PARENT) {
+            let (parent, tail) = parse_digest_line::<H>(after_parent)?;
+            parents.push(parent);
+            rest = tail;
+        }
+
+        if rest.is_empty() {
+            return Err(DeserializeError::UnexpectedEof);
+        }
+        let rest = rest
+            .strip_prefix(b"\n")
+            .ok_or(DeserializeError::InvalidFormat(
+                "se esperaba línea en blanco tras padres",
+            ))?;
+
+        let (meta_bytes, msg_bytes): (&[u8], &[u8]) = if let Some(after) = rest.strip_prefix(b"\n")
+        {
+            (&[], after)
+        } else {
+            let sep = rest
+                .windows(2)
+                .position(|w| w == b"\n\n")
+                .ok_or(DeserializeError::UnexpectedEof)?;
+            (&rest[..sep + 1], &rest[sep + 2..])
+        };
+
+        let meta = Meta::deserialize(meta_bytes)?;
+        let message = std::str::from_utf8(msg_bytes)?.to_owned();
+
+        Ok(Self {
+            root_hash,
+            parents,
+            message,
+            meta,
+        })
     }
 }
 
