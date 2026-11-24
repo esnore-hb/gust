@@ -101,8 +101,10 @@ pub trait GitObject: Serializable {
     type H: HashStrategy;
     /// Nombre del tipo de objeto estilo Git (ej. `"blob"`, `"tree"`, `"commit"`)
     const KIND: &'static str;
-    /// Genera y retorna el id del objeto mezclando su *header* y sus datos serializados
-    fn id(&self) -> <Self::H as HashStrategy>::Digest {
+    /// Serializa el objeto junto con su *header* (`<KIND> <len>\0<body>`).
+    ///
+    /// Devuelve los bytes completos listos para persistir o hashear sin duplicar el *header*.
+    fn encode(&self) -> Vec<u8> {
         let body = self.serialize();
         let len = body.len();
         // Cantidad de dígitos decimales de `len` (el 0 también ocupa un dígito)
@@ -112,6 +114,10 @@ pub trait GitObject: Serializable {
         // `write!` escribe directo en el Vec, sin crear un String intermedio
         write!(buf, "{} {}\0", Self::KIND, len).expect("escribir en un Vec no falla");
         buf.extend_from_slice(&body);
-        Self::H::hash(&buf)
+        buf
+    }
+    /// Genera y retorna el id del objeto mezclando su *header* y sus datos serializados
+    fn id(&self) -> <Self::H as HashStrategy>::Digest {
+        Self::H::hash(&self.encode())
     }
 }
