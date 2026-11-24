@@ -68,6 +68,17 @@ impl EntryKind {
             EntryKind::Tree => "tree",
         }
     }
+
+    /// Reconstruye el tipo a partir de su representación en bytes (`"blob"` o `"tree"`).
+    fn from_bytes(bytes: &[u8]) -> Result<Self, DeserializeError> {
+        match bytes {
+            b"blob" => Ok(EntryKind::Blob),
+            b"tree" => Ok(EntryKind::Tree),
+            _ => Err(DeserializeError::InvalidFormat(
+                "tipo de entrada desconocido",
+            )),
+        }
+    }
 }
 
 impl<H: HashStrategy> TreeEntry<H> {
@@ -84,6 +95,39 @@ impl<H: HashStrategy> TreeEntry<H> {
         buff.push(0);
         buff.extend_from_slice(self.hash.as_ref());
     }
+
+    /// Lee una entrada desde el inicio de `bytes` y devuelve la entrada junto al resto del slice.
+    fn parse_prefix(bytes: &[u8]) -> Result<(Self, &[u8]), DeserializeError> {
+        let space = bytes
+            .iter()
+            .position(|&b| b == b' ')
+            .ok_or(DeserializeError::UnexpectedEof)?;
+        let kind = EntryKind::from_bytes(&bytes[..space])?;
+        let rest = &bytes[space + 1..];
+
+        let nul = rest
+            .iter()
+            .position(|&b| b == 0)
+            .ok_or(DeserializeError::UnexpectedEof)?;
+        let name = std::str::from_utf8(&rest[..nul])?;
+        let after_nul = &rest[nul + 1..];
+
+        if after_nul.len() < H::DIGEST_LEN {
+            return Err(DeserializeError::UnexpectedEof);
+        }
+        let (digest_bytes, remaining) = after_nul.split_at(H::DIGEST_LEN);
+        let hash = H::digest_from_bytes(digest_bytes)
+            .ok_or(DeserializeError::InvalidFormat("largo de digest inválido"))?;
+
+        Ok((
+            Self {
+                kind,
+                name: name.to_owned(),
+                hash,
+            },
+            remaining,
+        ))
+    }
 }
 
 impl<H: HashStrategy> Serializable for TreeEntry<H> {
@@ -95,6 +139,19 @@ impl<H: HashStrategy> Serializable for TreeEntry<H> {
         let mut buff = Vec::with_capacity(self.serialized_len());
         self.write_into(&mut buff);
         buff
+    }
+}
+
+impl<H: HashStrategy> Deserializable for TreeEntry<H> {
+    /// Reconstruye una entrada a partir del formato `<kind> <name>\0<digest crudo>`.
+    fn deserialize(bytes: &[u8]) -> Result<Self, DeserializeError> {
+        let (entry, remaining) = Self::parse_prefix(bytes)?;
+        if !remaining.is_empty() {
+            return Err(DeserializeError::InvalidFormat(
+                "bytes sobrantes tras TreeEntry",
+            ));
+        }
+        Ok(entry)
     }
 }
 
@@ -143,6 +200,21 @@ impl<H: HashStrategy> Serializable for Tree<H> {
         }
 
         buff
+    }
+}
+
+impl<H: HashStrategy> Deserializable for Tree<H> {
+    /// Reconstruye un [`Tree`] leyendo entradas consecutivas hasta consumir todos los bytes.
+    ///
+    /// Una secuencia vacía produce un [`Tree`] sin entradas.
+    fn deserialize(mut bytes: &[u8]) -> Result<Self, DeserializeError> {
+        let mut entries = Vec::new();
+        while !bytes.is_empty() {
+            let (entry, remaining) = TreeEntry::parse_prefix(bytes)?;
+            entries.push(entry);
+            bytes = remaining;
+        }
+        Ok(Self { entries })
     }
 }
 
