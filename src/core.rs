@@ -251,10 +251,42 @@ impl Serializable for BTreeMap<String, String> {
     }
 }
 
+impl Deserializable for BTreeMap<String, String> {
+    /// Reconstruye el mapa a partir de líneas `<key> <value>\n`.
+    ///
+    /// Una secuencia vacía produce un mapa vacío.
+    fn deserialize(bytes: &[u8]) -> Result<Self, DeserializeError> {
+        let mut rest = std::str::from_utf8(bytes)?;
+        let mut map = BTreeMap::new();
+
+        while !rest.is_empty() {
+            let (line, tail) = rest
+                .split_once('\n')
+                .ok_or(DeserializeError::UnexpectedEof)?;
+            let (key, value) = line.split_once(' ').ok_or(DeserializeError::InvalidFormat(
+                "línea de metadato sin separador",
+            ))?;
+            map.insert(key.to_owned(), value.to_owned());
+            rest = tail;
+        }
+
+        Ok(map)
+    }
+}
+
 impl Serializable for Meta {
     /// Formato: el mismo que su [`BTreeMap`], `<key> <value>\n` por cada campo.
     fn serialize(&self) -> Vec<u8> {
         self.fields.serialize()
+    }
+}
+
+impl Deserializable for Meta {
+    /// Reconstruye [`Meta`] usando el mismo formato `<key> <value>\n` de su [`BTreeMap`].
+    fn deserialize(bytes: &[u8]) -> Result<Self, DeserializeError> {
+        Ok(Self {
+            fields: BTreeMap::deserialize(bytes)?,
+        })
     }
 }
 
