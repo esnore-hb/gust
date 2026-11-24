@@ -14,6 +14,21 @@ pub struct Blob<H: HashStrategy> {
     _h: PhantomData<H>,
 }
 
+impl<H: HashStrategy> Blob<H> {
+    /// Crea un [`Blob`] tomando posesión del contenido, sin copiarlo.
+    pub fn new(content: Vec<u8>) -> Self {
+        Self {
+            content,
+            _h: PhantomData,
+        }
+    }
+
+    /// Devuelve el contenido crudo del archivo.
+    pub fn content(&self) -> &[u8] {
+        &self.content
+    }
+}
+
 impl<H: HashStrategy> Serializable for Blob<H> {
     /// Devuelve una copia de los bytes crudos del archivo.
     ///
