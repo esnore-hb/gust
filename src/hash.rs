@@ -103,7 +103,7 @@ pub trait GitObject: Serializable {
     const KIND: &'static str;
     /// Serializa el objeto junto con su *header* (`<KIND> <len>\0<body>`).
     ///
-    /// Devuelve los bytes completos listos para persistir o hashear sin duplicar el *header*.
+    /// Devuelve los bytes de la serialización para hashearlos o darle otro uso.
     fn encode(&self) -> Vec<u8> {
         let body = self.serialize();
         let len = body.len();
