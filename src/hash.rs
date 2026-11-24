@@ -8,9 +8,15 @@ use std::io::Write;
 pub trait HashStrategy {
     /// El tipo de salida (ej. [u8; 20] o [u8; 32])
     type Digest: AsRef<[u8]> + Eq + Clone + std::fmt::Debug;
+    /// Largo fijo en bytes del *digest* producido por esta estrategia (ej. 20 para SHA-1, 32 para SHA-256)
+    const DIGEST_LEN: usize;
     /// Función de hash
     /// Dado un slice devuelve su hash de tipo Digest
     fn hash(data: &[u8]) -> Self::Digest;
+    /// Reconstruye un *digest* a partir de sus bytes crudos.
+    ///
+    /// Devuelve `None` si `bytes.len() != Self::DIGEST_LEN`.
+    fn from_bytes(bytes: &[u8]) -> Option<Self::Digest>;
 }
 
 /**
