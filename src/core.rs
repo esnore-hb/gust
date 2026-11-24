@@ -1,6 +1,6 @@
 use std::{collections::BTreeMap, marker::PhantomData};
 
-use crate::hash::{self, GitObject, HashStrategy, Serializable};
+use crate::hash::{Deserializable, DeserializeError, GitObject, HashStrategy, Serializable};
 
 /// # Blob
 /// Representa el contenido crudo de un archivo como secuencia de bytes (*Binary Large Object*)
@@ -20,6 +20,16 @@ impl<H: HashStrategy> Serializable for Blob<H> {
     /// Formato: `<content>`, sin header ni separadores.
     fn serialize(&self) -> Vec<u8> {
         self.content.clone()
+    }
+}
+
+impl<H: HashStrategy> Deserializable for Blob<H> {
+    /// Reconstruye el [`Blob`] copiando los bytes crudos recibidos.
+    fn deserialize(bytes: &[u8]) -> Result<Self, DeserializeError> {
+        Ok(Self {
+            content: bytes.to_vec(),
+            _h: PhantomData,
+        })
     }
 }
 
