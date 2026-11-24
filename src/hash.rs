@@ -16,7 +16,7 @@ pub trait HashStrategy {
     /// Reconstruye un *digest* a partir de sus bytes crudos.
     ///
     /// Devuelve `None` si `bytes.len() != Self::DIGEST_LEN`.
-    fn from_bytes(bytes: &[u8]) -> Option<Self::Digest>;
+    fn digest_from_bytes(bytes: &[u8]) -> Option<Self::Digest>;
 }
 
 /**
