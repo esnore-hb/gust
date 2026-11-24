@@ -118,12 +118,11 @@ impl<H: HashStrategy> TreeEntry<H> {
                 "nombre de entrada inválido",
             ));
         }
-        let after_nul = &rest[nul + 1..];
 
-        if after_nul.len() < H::DIGEST_LEN {
-            return Err(DeserializeError::UnexpectedEof);
-        }
-        let (digest_bytes, remaining) = after_nul.split_at(H::DIGEST_LEN);
+        // El digest tiene largo fijo: si faltan bytes, la entrada está truncada
+        let (digest_bytes, remaining) = rest[nul + 1..]
+            .split_at_checked(H::DIGEST_LEN)
+            .ok_or(DeserializeError::UnexpectedEof)?;
         let hash = H::digest_from_bytes(digest_bytes)
             .ok_or(DeserializeError::InvalidFormat("largo de digest inválido"))?;
 
@@ -353,6 +352,11 @@ pub struct Commit<H: HashStrategy> {
     pub meta: Meta,
 }
 
+/// Prefijo de la línea que apunta al [`Tree`] raíz en un [`Commit`] serializado
+const TREE_PREFIX: &[u8] = b"tree ";
+/// Prefijo de cada línea que apunta a un *commit* padre en un [`Commit`] serializado
+const PARENT_PREFIX: &[u8] = b"parent ";
+
 /// Extrae `<digest>\n` desde el inicio de `bytes`, validando el largo y el salto de línea final.
 fn parse_digest_line<H: HashStrategy>(
     bytes: &[u8],
@@ -385,16 +389,13 @@ impl<H: HashStrategy> Serializable for Commit<H> {
     /// incluso si un digest crudo contiene el byte `\n`. El mensaje va al final,
     /// por lo que puede contener cualquier texto.
     fn serialize(&self) -> Vec<u8> {
-        const TREE: &[u8] = b"tree ";
-        const PARENT: &[u8] = b"parent ";
-
         let meta = self.meta.serialize();
         let parents_len: usize = self
             .parents
             .iter()
-            .map(|p| PARENT.len() + p.as_ref().len() + 1)
+            .map(|p| PARENT_PREFIX.len() + p.as_ref().len() + 1)
             .sum();
-        let total_len = TREE.len()
+        let total_len = TREE_PREFIX.len()
             + self.root_hash.as_ref().len()
             + 1
             + parents_len
@@ -404,13 +405,13 @@ impl<H: HashStrategy> Serializable for Commit<H> {
             + self.message.len();
         let mut buff = Vec::with_capacity(total_len);
 
-        buff.extend_from_slice(TREE);
+        buff.extend_from_slice(TREE_PREFIX);
         buff.extend_from_slice(self.root_hash.as_ref());
         buff.push(b'\n');
 
         // Orden de inserción: el primer padre es la rama donde se hizo el merge
         for parent in &self.parents {
-            buff.extend_from_slice(PARENT);
+            buff.extend_from_slice(PARENT_PREFIX);
             buff.extend_from_slice(parent.as_ref());
             buff.push(b'\n');
         }
@@ -428,16 +429,13 @@ impl<H: HashStrategy> Serializable for Commit<H> {
 impl<H: HashStrategy> Deserializable for Commit<H> {
     /// Reconstruye un [`Commit`] a partir del formato producido por [`Serializable::serialize`].
     fn deserialize(bytes: &[u8]) -> Result<Self, DeserializeError> {
-        const TREE: &[u8] = b"tree ";
-        const PARENT: &[u8] = b"parent ";
-
         let rest = bytes
-            .strip_prefix(TREE)
+            .strip_prefix(TREE_PREFIX)
             .ok_or(DeserializeError::InvalidFormat("falta prefijo tree"))?;
         let (root_hash, mut rest) = parse_digest_line::<H>(rest)?;
 
         let mut parents = Vec::new();
-        while let Some(after_parent) = rest.strip_prefix(PARENT) {
+        while let Some(after_parent) = rest.strip_prefix(PARENT_PREFIX) {
             let (parent, tail) = parse_digest_line::<H>(after_parent)?;
             parents.push(parent);
             rest = tail;
