@@ -1,3 +1,8 @@
+/// core.rs
+/// Define las estructuras base del proyecto.
+/// TODO <colocar explicaciones, decisiones de diseño, próximos pasos, etc>
+
+
 use std::{collections::BTreeMap, marker::PhantomData};
 
 use crate::hash::{Deserializable, DeserializeError, GitObject, HashStrategy, Serializable};
