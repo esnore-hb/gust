@@ -1,4 +1,4 @@
-use std::io::Write;
+use std::{error::Error, fmt, io::Write, str::Utf8Error};
 
 /// # HashStrategy
 /// Define el algoritmo que se usará para calcular el hash (ej. SHA-1 o SHA-256).
@@ -26,6 +26,50 @@ pub trait HashStrategy {
 pub trait Serializable {
     /// Transforma el objeto actual en un vector de bytes (`Vec<u8>`)
     fn serialize(&self) -> Vec<u8>;
+}
+
+/// # DeserializeError
+/// Error producido al reconstruir un objeto desde una secuencia de bytes.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum DeserializeError {
+    /// Faltan bytes antes de completar la estructura esperada
+    UnexpectedEof,
+    /// Los bytes no son UTF-8 válido en un campo de texto
+    InvalidUtf8(Utf8Error),
+    /// El contenido no respeta el formato esperado del objeto
+    InvalidFormat(&'static str),
+}
+
+impl fmt::Display for DeserializeError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::UnexpectedEof => write!(f, "fin de datos inesperado al deserializar"),
+            Self::InvalidUtf8(err) => write!(f, "UTF-8 inválido: {err}"),
+            Self::InvalidFormat(msg) => write!(f, "formato inválido: {msg}"),
+        }
+    }
+}
+
+impl Error for DeserializeError {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        match self {
+            Self::InvalidUtf8(err) => Some(err),
+            Self::UnexpectedEof | Self::InvalidFormat(_) => None,
+        }
+    }
+}
+
+impl From<Utf8Error> for DeserializeError {
+    fn from(err: Utf8Error) -> Self {
+        Self::InvalidUtf8(err)
+    }
+}
+
+/// # Deserializable
+/// Permite reconstruir una estructura a partir de una secuencia de bytes.
+pub trait Deserializable: Sized {
+    /// Reconstruye el objeto desde `bytes` o devuelve un [`DeserializeError`] si el formato es inválido.
+    fn deserialize(bytes: &[u8]) -> Result<Self, DeserializeError>;
 }
 
 /// # GitObject
