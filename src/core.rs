@@ -207,10 +207,22 @@ impl<H: HashStrategy> Deserializable for Tree<H> {
     /// Reconstruye un [`Tree`] leyendo entradas consecutivas hasta consumir todos los bytes.
     ///
     /// Una secuencia vacía produce un [`Tree`] sin entradas.
+    ///
+    /// Rechaza entradas desordenadas o con nombres repetidos, ya que [`Serializable::serialize`]
+    /// nunca las produciría y el *tree* leído tendría un id distinto al de sus bytes.
     fn deserialize(mut bytes: &[u8]) -> Result<Self, DeserializeError> {
-        let mut entries = Vec::new();
+        let mut entries: Vec<TreeEntry<H>> = Vec::new();
         while !bytes.is_empty() {
             let (entry, remaining) = TreeEntry::parse_prefix(bytes)?;
+            // Forma canónica: nombres estrictamente crecientes (sin desorden ni duplicados)
+            if entries
+                .last()
+                .is_some_and(|prev| prev.name.as_bytes() >= entry.name.as_bytes())
+            {
+                return Err(DeserializeError::InvalidFormat(
+                    "entradas de tree desordenadas o duplicadas",
+                ));
+            }
             entries.push(entry);
             bytes = remaining;
         }
@@ -255,6 +267,9 @@ impl Deserializable for BTreeMap<String, String> {
     /// Reconstruye el mapa a partir de líneas `<key> <value>\n`.
     ///
     /// Una secuencia vacía produce un mapa vacío.
+    ///
+    /// Rechaza claves desordenadas o repetidas: una clave repetida reemplazaría en silencio
+    /// el valor anterior y la serialización resultante ya no coincidiría con los bytes leídos.
     fn deserialize(bytes: &[u8]) -> Result<Self, DeserializeError> {
         let mut rest = std::str::from_utf8(bytes)?;
         let mut map = BTreeMap::new();
@@ -266,6 +281,15 @@ impl Deserializable for BTreeMap<String, String> {
             let (key, value) = line.split_once(' ').ok_or(DeserializeError::InvalidFormat(
                 "línea de metadato sin separador",
             ))?;
+            // Forma canónica: claves estrictamente crecientes (sin desorden ni duplicados)
+            if map
+                .last_key_value()
+                .is_some_and(|(prev, _): (&String, _)| prev.as_str() >= key)
+            {
+                return Err(DeserializeError::InvalidFormat(
+                    "claves de metadatos desordenadas o duplicadas",
+                ));
+            }
             map.insert(key.to_owned(), value.to_owned());
             rest = tail;
         }
