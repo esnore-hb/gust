@@ -19,16 +19,16 @@ pub trait HashStrategy {
     fn digest_from_bytes(bytes: &[u8]) -> Option<Self::Digest>;
 }
 
-/**
- * # Serializable
- * Permite convertir una estructura en una secuencia de bytes.
- */
+/// # Serializable
+/// Permite convertir una estructura en una secuencia de bytes.
 pub trait Serializable {
     /// Transforma el objeto actual en un vector de bytes (`Vec<u8>`)
     fn serialize(&self) -> Vec<u8>;
 }
 
-/*--------MANEJO DE ERRORES DE *Deserialización*---------- */
+// ---------- Manejo de errores de deserialización ----------
+// Tipo de error común a todas las implementaciones de Deserializable, junto con
+// las conversiones necesarias para usarlo con el operador `?`.
 
 /// # DeserializeError
 /// Error producido al reconstruir un objeto desde una secuencia de bytes.
@@ -67,7 +67,7 @@ impl From<Utf8Error> for DeserializeError {
     }
 }
 
-/*---------------- */
+// ----------------------------------------------------------
 
 /// # Deserializable
 /// Permite reconstruir una estructura a partir de una secuencia de bytes.
@@ -84,21 +84,21 @@ pub trait Deserializable: Sized {
 ///
 /// ## Ejemplo
 /// ```ignore
-/// struct Blob { content: Vec<u8> };
+/// struct Blob { content: Vec<u8> }
 ///
 /// impl Serializable for Blob {
 ///     fn serialize(&self) -> Vec<u8> {
-///         self.content
+///         self.content.clone()
 ///     }
 /// }
 ///
 /// impl GitObject for Blob {
-///     type H = HashKetchum // algoritmo de Hash a utilizar
+///     type H = HashKetchum; // algoritmo de hash a utilizar
 ///     const KIND: &'static str = "blob";
 /// }
-/// let archivo = Blob { content: b"hola".to_vec() };
+/// let file = Blob { content: b"hola".to_vec() };
 /// // Hashea "blob 4\0hola"
-/// let id = archivo.id();
+/// let id = file.id();
 /// ```
 pub trait GitObject: Serializable {
     /// Estrategia de hash que usará este objeto
@@ -120,7 +120,8 @@ pub trait GitObject: Serializable {
         buf.extend_from_slice(&body);
         buf
     }
-    /// Genera y retorna el id del objeto mezclando su *header* y sus datos serializados
+
+    /// Devuelve el id del objeto: el *hash* de [`GitObject::encode`].
     fn id(&self) -> <Self::H as HashStrategy>::Digest {
         Self::H::hash(&self.encode())
     }
