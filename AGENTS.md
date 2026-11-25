@@ -35,6 +35,10 @@ cargo fmt --check           # checks formatting (does not reformat)
   It does not depend on `core.rs`. Dependencies always flow `core` → `hash`.
 - `src/core.rs` defines the objects (`Blob`, `Tree`, `TreeEntry`, `Commit`, `Meta`), all
   generic over `H: HashStrategy`.
+- `src/store2.rs` defines the content-addressed storage strategy (`ObjectStore`,
+  `StoreError`), depending only on `hash.rs` (`store2` → `hash`). Backends implement raw
+  byte ops (`put_raw`, `get_raw`, `contains`) and get typed, integrity-checked
+  `write`/`read` for free.
 - Never hardcode a concrete algorithm (SHA-1, SHA-256…) in `core.rs`: always use
   `H::Digest` and `H::hash`.
 - Every storable object implements `Serializable` + `GitObject` with its `KIND`
