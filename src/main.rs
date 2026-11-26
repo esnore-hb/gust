@@ -4,6 +4,7 @@ mod working_tree;
 mod hash;
 mod core;
 mod store2;
+mod refs;
 
 use crate::objects::Blob;
 
