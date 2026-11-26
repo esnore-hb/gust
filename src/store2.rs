@@ -1,15 +1,37 @@
-/// store2.rs
-/// Su principal objetivo es abstraer la lógica del almacenamiento de objetos.
-/// 
-/// Similar a `HashStrategy`, `ObjectStore` define de manera general una *estrategia*
-/// para almacenar objetos.
-/// 
-/// Por ejemplo, una estrategia `MemoryStore` implementa `put_raw`, `get_raw` y `content` que
-/// recupera y almacena los objetos en memoria RAM, mientras que una estrategia `FsStore` puede
-/// implementarlo en disco.
-/// 
-/// Es más, en este útlimo caso, se podría definir una `CompressionStrategy` para que FsStore
-/// pueda almacenar usando algún tipo de compresión.
+//! Abstrae el almacenamiento de los *objetos inmutables* del repositorio (*blobs*, *trees* y
+//! *commits*), guardándolos e indexándolos según su propio contenido.
+//!
+//! A diferencia de [`crate::refs::RefStore`], que administra punteros que cambian con cada
+//! *commit* (ramas, `HEAD`), `ObjectStore` solo acumula objetos: nunca modifica ni sobrescribe
+//! uno ya guardado.
+//!
+//! ## Repaso
+//! ### Almacenamiento direccionado por contenido
+//! La llave de cada objeto es el *hash* de sus bytes (su id, ver [`crate::hash`]). Así:
+//! - El mismo contenido se guarda una sola vez.
+//! - Al leer, se re-hashean los bytes: si no coinciden con la llave, están corruptos.
+//! - "Modificar" un objeto es, en realidad, guardar uno nuevo.
+//!
+//! ## Diseño
+//! Igual que [`HashStrategy`], el trait define **qué** se puede hacer y cada *backend* decide
+//! **dónde** (ej. `MemoryStore` en RAM, `FsStore` en disco, quizás con compresión).
+//!
+//! - **Crudas** (las implementa el *backend*): `put_raw`, `get_raw` y `contains`. Usan `&[u8]`
+//!   como llave, así el *backend* no depende del algoritmo de *hash*.
+//! - **Tipadas** (gratis): `write` guarda un [`GitObject`] si no existe y devuelve su id;
+//!   `read` lo recupera verificando su integridad.
+//!
+//! ## Limitaciones conocidas (post-MVP)
+//! - **Operaciones uno a uno (`put_raw` / `get_raw`):** Sin lecturas ni escrituras por lotes
+//!   (*batching*), recorrer o guardar un DAG grande en disco o red sufre por exceso de *syscalls*
+//!   e inodos (*loose objects*) o por latencia de *round-trips*. A futuro conviene agrupar
+//!   objetos en segmentos *append-only*.
+//! - **Carga completa en RAM y opacidad del `KIND`:** `get_raw` lee todo el objeto en memoria sin
+//!   opción de consultar solo su *header* (tipo y largo), y `put_raw` no recibe el `KIND` por
+//!   separado (útil para separar segmentos de grafo `commit`/`tree` de segmentos de `blob`).
+//! - **Granularidad de errores en `ObjectStore::read`:** `GitObject::decode` unifica fallos de
+//!   *header* y de tipo en `DeserializeError`, por lo que `StoreError::InvalidHeader` y
+//!   `StoreError::KindMismatch` aún no se emiten por separado.
 
 use crate::hash::{HashStrategy, Deserializable, GitObject, DeserializeError};
 use std::io;
