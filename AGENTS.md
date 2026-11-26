@@ -7,9 +7,11 @@ this way", propose the simpler alternative.
 Reply to the user in Spanish.
 
 ## Current session (the developer updates this before each session)
-- **Task:** Implement Serializable and GitObject for Tree, TreeEntry and Commit in src/core.rs.
-- **May modify:** `src/core.rs`
-- **Read-only:** `src/hash.rs`
+- **Task:** Commit issue: build a tree from the index, create a commit object and append it
+  to the history, in src/commit.rs.
+- **May modify:** `src/commit.rs`, `src/main.rs` (only `mod` declarations)
+- **Read-only:** `src/hash.rs`, `src/core.rs`, `src/store2.rs`, `src/refs.rs`,
+  `src/working_tree.rs`
 - **Do not read or touch:** `.git/`, `target/`
 
 In "Read-only" files you may **propose** changes (adding or modifying code): show the diff
@@ -39,6 +41,13 @@ cargo fmt --check           # checks formatting (does not reformat)
   `StoreError`), depending only on `hash.rs` (`store2` → `hash`). Backends implement raw
   byte ops (`put_raw`, `get_raw`, `contains`) and get typed, integrity-checked
   `write`/`read` for free.
+- `src/refs.rs` defines the mutable state strategy (`RefStore`, `Head`, `RefError`) for
+  `HEAD` and branches, depending only on `hash.rs` (`refs` → `hash`).
+- `src/commit.rs` builds the trees from the index (`build_tree`) and records commits
+  (`create_commit`, `CommitError`). It depends on `core`, `hash`, `store2` and `refs`, and is
+  generic over `HashStrategy`, `ObjectStore` and `RefStore`. The index is a
+  `path -> blob digest` map, and the blobs must already be stored. The branch only advances
+  at the end, through `advance_head`.
 - Never hardcode a concrete algorithm (SHA-1, SHA-256…) in `core.rs`: always use
   `H::Digest` and `H::hash`.
 - Every storable object implements `Serializable` + `GitObject` with its `KIND`
