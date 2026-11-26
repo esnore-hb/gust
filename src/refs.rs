@@ -3,7 +3,32 @@
 //!
 //! A diferencia de [`crate::store2::ObjectStore`], que guarda objetos inmutables indexados por su
 //! contenido, `RefStore` administra los punteros humanos (como ramas) que avanzan con cada *commit*.
-//! 
+//!
+//! ## Repaso
+//! ### Referencias de Git
+//! Una **referencia** es un nombre que apunta al *hash* de un *commit*. Como los *commits* son
+//! inmutables, las referencias son lo único que se mueve en el historial.
+//! - **Rama:** avanza al nuevo *commit* cada vez que se hace un *commit* sobre ella.
+//! - **Tag:** marca un *commit* fijo (ej. `v1.0`).
+//! - **`HEAD`:** apunta al nombre de la rama actual, para saber cuál avanzar. Si apunta directo
+//!   a un *commit*, está en modo *detached*. En un repositorio vacío, `HEAD` apunta a `main`
+//!   aunque `main` aún no exista.
+//!
+//! ```text
+//! HEAD ─▶ main ─▶ c3 ─▶ c2 ─▶ c1
+//!                       ▲
+//!                v1.0 ──┘
+//! ```
+//!
+//! ### *Compare & swap*
+//! Escritura condicional: "cambia la referencia a `new` solo si aún vale `expected`". Evita
+//! que dos escrituras simultáneas se pisen (condición de carrera): la segunda falla con un
+//! conflicto en vez de borrar el cambio de la primera.
+//!
+//! ### Registro de cambios
+//! Cada mutación recibe una razón (ej. `"commit: inicial"`) que el *backend* puede registrar,
+//! para saber después cuándo y por qué se movió una referencia (similar al *reflog* de Git).
+//!
 //! ## Diseño
 //! Define el trait `RefStore` que busca el mismo diseño de [`HashStrategy`] y [`ObjectStore`]: basado en *estrategias*,
 //! junto con eso la actualización (mutación) de una referencia exige que sea por medio de *compare & swap*, modelo propuesto
@@ -14,17 +39,19 @@
 //! **Consulta**
 //! - `get_head`: Consulta el `HEAD` actual, e.j. si devolviera `Head::Branch(`main`)` indicaría que se encuentra en la rama main
 //! - `get_ref(name)`: Devuelve el hash al que apunta la referencia `name`. e.j. Si ya sabemos que estamos en `main`, esto devolvería
-//!    hacia que `commit` apunta `main`, la rama actual. Si la referencia (e.j. rama) no existiera, obtendríamos `None` 
+//!   hacia que `commit` apunta `main`, la rama actual. Si la referencia (e.j. rama) no existiera, obtendríamos `None`
 //! - `get_refs`: Devuelve todas las referencias existentes y los commits a los que apuntan.
-//! **Mutación** 
+//!
+//! **Mutación**
+//!
 //! Todas las mutaciones requieren de un parámetro `reason` para ser registradas por el *backend*, pues,
 //! las operaciones de mutación son *ciegas* a las operaciones específicas que se realizan
+//!
 //! - `set_head` Cambia hacia adonde apunta `HEAD` y proporciona una razón para ser loggeada
 //! - `compare_and_swap`: *Muta* el hash de una referencia. Se incluye el argumento `expected`
-//!    que ayuda a los *backends* a implementar mutación sin condiciones de carrera, sin este,
-//!    no habría forma de saber si las escrituras se están *pisando* entre sí.
+//!   que ayuda a los *backends* a implementar mutación sin condiciones de carrera, sin este,
+//!   no habría forma de saber si las escrituras se están *pisando* entre sí.
 //! - `advance_head`: Caso particular de `compare_and_swap`: Avanza la referencia asociada a `HEAD`
-//!    
 //!
 //! ## Limitaciones conocidas
 //! - **Sin modo *detached*:** [`Head`] solo contempla apuntar a una rama (`Head::Branch`).
