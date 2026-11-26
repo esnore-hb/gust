@@ -27,8 +27,10 @@ cargo fmt --check           # checks formatting (does not reformat)
   format files you are allowed to modify.
 
 ## Stack
-- Stable Rust, no external dependencies for now. The `rustc` version and edition differ
-  between team members (see "Ask first").
+- Stable Rust. Traits and interfaces depend only on `std` and stay generic (like
+  `HashStrategy`, `ObjectStore`, `RefStore`); external dependencies are allowed only in
+  concrete backends (see "Ask first"). The `rustc` version and edition differ between team
+  members (see "Ask first").
 
 ## Architecture
 - `src/hash.rs` defines the base traits: `HashStrategy`, `Serializable`, `GitObject`.
