@@ -16,10 +16,10 @@ use std::{
 };
 
 use crate::{
-    core::{Commit, EntryKind, Meta, Tree, TreeEntry},
+    objects::{Commit, EntryKind, Meta, Tree, TreeEntry},
     hash::HashStrategy,
     refs::{RefError, RefStore},
-    store2::{ObjectStore, StoreError},
+    store::{ObjectStore, StoreError},
 };
 
 /// # CommitError
