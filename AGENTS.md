@@ -7,11 +7,9 @@ this way", propose the simpler alternative.
 Reply to the user in Spanish.
 
 ## Current session (the developer updates this before each session)
-- **Task:** Commit issue: build a tree from the index, create a commit object and append it
-  to the history, in src/commit.rs.
-- **May modify:** `src/commit.rs`, `src/main.rs` (only `mod` declarations)
-- **Read-only:** `src/hash.rs`, `src/core.rs`, `src/store2.rs`, `src/refs.rs`,
-  `src/working_tree.rs`
+- **Task:** To brainstorm, freely explore ideas, think out loud with the user, and write or modify existing code for minor changes.
+- **May modify:** `src/main.rs` (module declarations only), the rest of `src/` `AGENTS.md`
+- **Read-only:** 
 - **Do not read or touch:** `.git/`, `target/`
 
 In "Read-only" files you may **propose** changes (adding or modifying code): show the diff
@@ -35,25 +33,23 @@ cargo fmt --check           # checks formatting (does not reformat)
   members (see "Ask first").
 
 ## Architecture
-- `src/hash.rs` defines the base traits: `HashStrategy`, `Serializable`, `GitObject`.
-  It does not depend on `core.rs`. Dependencies always flow `core` → `hash`.
-- `src/core.rs` defines the objects (`Blob`, `Tree`, `TreeEntry`, `Commit`, `Meta`), all
-  generic over `H: HashStrategy`.
-- `src/store2.rs` defines the content-addressed storage strategy (`ObjectStore`,
-  `StoreError`), depending only on `hash.rs` (`store2` → `hash`). Backends implement raw
-  byte ops (`put_raw`, `get_raw`, `contains`) and get typed, integrity-checked
-  `write`/`read` for free.
-- `src/refs.rs` defines the mutable state strategy (`RefStore`, `Head`, `RefError`) for
-  `HEAD` and branches, depending only on `hash.rs` (`refs` → `hash`).
-- `src/commit.rs` builds the trees from the index (`build_tree`) and records commits
-  (`create_commit`, `CommitError`). It depends on `core`, `hash`, `store2` and `refs`, and is
-  generic over `HashStrategy`, `ObjectStore` and `RefStore`. The index is a
-  `path -> blob digest` map, and the blobs must already be stored. The branch only advances
-  at the end, through `advance_head`.
-- Never hardcode a concrete algorithm (SHA-1, SHA-256…) in `core.rs`: always use
-  `H::Digest` and `H::hash`.
-- Every storable object implements `Serializable` + `GitObject` with its `KIND`
-  (`"blob"`, `"tree"`, `"commit"`).
+- `src/hash.rs`: base traits (`HashStrategy`, `Serializable`, `Deserializable`,
+  `GitObject`). Depends on nothing else in the crate.
+- `src/objects/`: the objects (`Blob`, `Tree`/`TreeEntry`, `Commit`, `Meta`), one file
+  each, generic over `H: HashStrategy`.
+- `src/store.rs`: content-addressed storage (`ObjectStore`, `StoreError`). Backends implement
+  `put_raw`/`get_raw`/`contains` and get integrity-checked `write`/`read` for free.
+- `src/refs.rs`: mutable state for `HEAD` and branches (`RefStore`, `Head`, `RefError`).
+- `src/workdir.rs`: working directory (`WorkDir`, `WorkDirMut`); `snapshot` turns it into
+  stored blobs and trees.
+- `src/commit.rs`: builds trees from an index (`path -> blob digest`) and records commits
+  (`create_commit`); the branch only advances at the end, via `advance_head`.
+  **Pending:** it overlaps with `WorkDir::snapshot` (both build trees); decide how to merge them.
+- `src/backends/`: concrete implementations (`fs`, `mem`, `hash`). The only place where
+  external dependencies are allowed.
+- Traits modules (`hash`, `store`, `refs`, `workdir`) never depend on `backends`.
+- Every storable object implements `Serializable` + `Deserializable` + `GitObject` with its
+  `KIND` (`"blob"`, `"tree"`, `"commit"`).
 - Serialization must be **deterministic**: the same object always produces the same bytes
   (that is why `Meta` uses `BTreeMap`). Sort any collection before serializing it.
 
@@ -75,7 +71,7 @@ buff.push(b'\n');
 let line = format!("{} {}\n", key, value);
 buff.extend_from_slice(line.as_bytes());
 ```
-Reference in the repo: `impl Serializable for BTreeMap<String, String>` in `src/core.rs`.
+Reference in the repo: `impl Serializable for BTreeMap<String, String>` in `src/objects/meta.rs`.
 
 ## Documentation (rustdoc)
 - Use `///` (not `/** */`), written in clear Spanish; terms like *snapshot*, *commit* or
