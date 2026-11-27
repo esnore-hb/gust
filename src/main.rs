@@ -1,24 +1,30 @@
 mod store;
 mod hash;
 mod commit;
+mod demo;
 mod refs;
 mod workdir;
 
 mod objects;
 mod backends;
 
-use objects::{Blob};
+use backends::{
+    hash::Sha1,
+    mem::{MemoryRefs, MemoryStore, MemoryWorkDir},
+};
+use color_eyre::eyre::eyre;
+use workdir::WorkDirMut;
 
 fn main() -> color_eyre::Result<()> {
-    /** 
     color_eyre::install()?;
-    let blob = Blob::new(b"hello".to_vec());
-    //println!("{:?}", blob);
+    // Backends en RAM; cambiar a fs solo cambia estas líneas
+    let mut store = MemoryStore::default();
+    let mut refs = MemoryRefs::<Sha1>::new("main");
+    let mut workdir = MemoryWorkDir::default();
+    workdir.write_file("README.md", b"# gust\n")?;
 
-    let mut wt = Workdir::WorkingTree::open(".")?;
-    wt.add("README.md")?;
-    println!("{:?}", wt.files());
-    */
+    let (first, second) =
+        demo::run::<Sha1, _, _, _>(&mut store, &mut refs, &mut workdir).map_err(|e| eyre!(e))?;
+    println!("initial: {first:?}\nsegundo: {second:?}");
     Ok(())
-    
 }
