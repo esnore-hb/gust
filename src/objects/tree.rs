@@ -226,7 +226,7 @@ impl<H: HashStrategy> Deserializable for Tree<H> {
         let mut entries: Vec<TreeEntry<H>> = Vec::new();
         while !bytes.is_empty() {
             let (entry, remaining) = TreeEntry::from_bytes(bytes)?;
-            // Forma canónica: nombres estrictamente crecientes (sin desorden ni duplicados)
+            // Evita nombres desordenados o duplicados
             if entries
                 .last()
                 .is_some_and(|prev| prev.name.as_bytes() >= entry.name.as_bytes())

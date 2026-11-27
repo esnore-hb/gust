@@ -34,7 +34,7 @@
 //!   `StoreError::KindMismatch` aún no se emiten por separado.
 
 use crate::hash::{HashStrategy, Deserializable, GitObject, DeserializeError};
-use std::io;
+use std::{error::Error, fmt, io};
 
 /// # StoreError
 /// Error producido al leer o escribir objetos en un [`ObjectStore`].
