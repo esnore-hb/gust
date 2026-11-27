@@ -1,3 +1,46 @@
+//! Define una interfaz común para calcular un *hash*,
+//! cómo se convierte un objeto en bytes (y de vuelta) y cómo un objeto obtiene su identificador.
+//!
+//! No depende de ningún otro módulo del crate, mientras
+//! que [`crate::core`] (los objetos) y [`crate::store2`] (su almacenamiento) se apoyan en él.
+//!
+//! ## Repaso
+//! ### ¿Qué es un *hash* (en este contexto)?
+//! Función que resume bytes de cualquier tamaño en un *digest* de tamaño fijo (ej. 20 bytes en
+//! SHA-1). Los mismos bytes dan siempre el mismo *digest*, y bytes distintos, en la práctica,
+//! nunca coinciden: sirve como huella digital del contenido.
+//!
+//! ### ¿Qué es serializar?
+//! Convertir una estructura en memoria en una secuencia de bytes (y deserializar, el camino
+//! inverso). Como el id se calcula sobre esos bytes, debe ser **determinista**: el mismo objeto
+//! produce siempre los mismos bytes.
+//!
+//! ### ¿Y la serialización "estilo Git"?
+//! Antes de hashear, Git antepone al cuerpo un *header* con el tipo y el largo:
+//! `<KIND> <len>\0<body>` (ej. `blob 4\0hola`). El *hash* de eso es el **id** del objeto. El
+//! `KIND` evita que objetos de distinto tipo con el mismo cuerpo (ej. un `Blob` y un `Tree`
+//! vacíos) compartan id, y `<len>` permite detectar datos truncados.
+//!
+//! ## Diseño
+//! - [`HashStrategy`]: el algoritmo, recibido como genérico para no fijar uno concreto.
+//! - [`Serializable`] / [`Deserializable`]: objeto ↔ cuerpo en bytes; deserializar puede
+//!   fallar con [`DeserializeError`].
+//! - [`GitObject`]: declara `H` y `KIND`, y obtiene gratis `encode` (agrega el *header*),
+//!   `decode` (lo valida) e `id`.
+//!
+//! ```text
+//! objeto --serialize--> body --encode--> <KIND> <len>\0body --H::hash--> id
+//! ```
+//!
+//! ## Limitaciones conocidas (post-MVP)
+//! - **Copias en memoria al serializar y codificar:** `Serializable::serialize` reserva un
+//!   `Vec<u8>` nuevo y `GitObject::encode` reserva otro `Vec<u8>` adicional para anteponer el
+//!   *header* `<KIND> <len>\0`. En objetos grandes (ej. `Blob`) esto triplica temporalmente el
+//!   uso de RAM; a futuro conviene escribir sobre un buffer compartido (`write_into` / `io::Write`).
+//! - **Hashing en un solo paso:** `HashStrategy::hash` exige un slice contiguo en memoria.
+//!   Exponer un *hasher* incremental permitiría calcular `GitObject::id` en *streaming* sin
+//!   concatenar antes el *header* y el cuerpo.
+
 use std::{error::Error, fmt, io::Write, str::Utf8Error};
 
 /// # HashStrategy

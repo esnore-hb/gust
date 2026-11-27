@@ -4,6 +4,55 @@
 //! A diferencia de [`crate::store2::ObjectStore`], que guarda objetos inmutables indexados por su
 //! contenido, `RefStore` administra los punteros humanos (como ramas) que avanzan con cada *commit*.
 //!
+//! ## Repaso
+//! ### Referencias de Git
+//! Una **referencia** es un nombre que apunta al *hash* de un *commit*. Como los *commits* son
+//! inmutables, las referencias son lo único que se mueve en el historial.
+//! - **Rama:** avanza al nuevo *commit* cada vez que se hace un *commit* sobre ella.
+//! - **Tag:** marca un *commit* fijo (ej. `v1.0`).
+//! - **`HEAD`:** apunta al nombre de la rama actual, para saber cuál avanzar. Si apunta directo
+//!   a un *commit*, está en modo *detached*. En un repositorio vacío, `HEAD` apunta a `main`
+//!   aunque `main` aún no exista.
+//!
+//! ```text
+//! HEAD ─▶ main ─▶ c3 ─▶ c2 ─▶ c1
+//!                       ▲
+//!                v1.0 ──┘
+//! ```
+//!
+//! ### *Compare & swap*
+//! Escritura condicional: "cambia la referencia a `new` solo si aún vale `expected`". Evita
+//! que dos escrituras simultáneas se pisen (condición de carrera): la segunda falla con un
+//! conflicto en vez de borrar el cambio de la primera.
+//!
+//! ### Registro de cambios
+//! Cada mutación recibe una razón (ej. `"commit: inicial"`) que el *backend* puede registrar,
+//! para saber después cuándo y por qué se movió una referencia (similar al *reflog* de Git).
+//!
+//! ## Diseño
+//! Define el trait `RefStore` que busca el mismo diseño de [`HashStrategy`] y [`ObjectStore`]: basado en *estrategias*,
+//! junto con eso la actualización (mutación) de una referencia exige que sea por medio de *compare & swap*, modelo propuesto
+//! en el blog [git-at-any-scale](https://cursor.com/en-US/blog/git-at-any-scale#continuity).
+//! 
+//! Cada implementación define operaciones básicas de mutación y consulta en torno a `HEAD` y las diferentes referencias:
+//! 
+//! **Consulta**
+//! - `get_head`: Consulta el `HEAD` actual, e.j. si devolviera `Head::Branch(`main`)` indicaría que se encuentra en la rama main
+//! - `get_ref(name)`: Devuelve el hash al que apunta la referencia `name`. e.j. Si ya sabemos que estamos en `main`, esto devolvería
+//!   hacia que `commit` apunta `main`, la rama actual. Si la referencia (e.j. rama) no existiera, obtendríamos `None`
+//! - `get_refs`: Devuelve todas las referencias existentes y los commits a los que apuntan.
+//!
+//! **Mutación**
+//!
+//! Todas las mutaciones requieren de un parámetro `reason` para ser registradas por el *backend*, pues,
+//! las operaciones de mutación son *ciegas* a las operaciones específicas que se realizan
+//!
+//! - `set_head` Cambia hacia adonde apunta `HEAD` y proporciona una razón para ser loggeada
+//! - `compare_and_swap`: *Muta* el hash de una referencia. Se incluye el argumento `expected`
+//!   que ayuda a los *backends* a implementar mutación sin condiciones de carrera, sin este,
+//!   no habría forma de saber si las escrituras se están *pisando* entre sí.
+//! - `advance_head`: Caso particular de `compare_and_swap`: Avanza la referencia asociada a `HEAD`
+//!
 //! ## Limitaciones conocidas
 //! - **Sin modo *detached*:** [`Head`] solo contempla apuntar a una rama (`Head::Branch`).
 //!   Se marca `#[non_exhaustive]` para extenderlo a futuro (si una variante nueva requiriese
@@ -119,10 +168,14 @@ pub fn validate_ref_name(name: &str) -> Result<(), RefError> {
 /// ```
 pub trait RefStore<H: HashStrategy> {
     /// Devuelve el destino actual de `HEAD`.
-    fn head(&self) -> Result<Head, RefError>;
+    fn get_head(&self) -> Result<Head, RefError>;
 
-    /// Cambia el destino al que apunta `HEAD`, registrando `reason` si el *backend* guarda historial.
-    /// e.j. cambio de rama o entrar en modo dettached
+    /// Cambia hacia donde apunta `HEAD`, registrando `reason` si el *backend* guarda *logs*.
+    /// e.j. cambio de rama o entrar en modo dettached.
+    /// ## Args
+    /// * `&mut self`: muta el Store
+    /// * `target`: Nuevo `Head::Branch(name)` u otros.
+    /// * `reason`: descripción breve para el *log*.
     fn set_head(&mut self, target: Head, reason: &str) -> Result<(), RefError>;
 
     /// Devuelve el *digest* al que apunta la referencia `name`, o `Ok(None)` si aún no existe.
@@ -135,6 +188,17 @@ pub trait RefStore<H: HashStrategy> {
     ///
     /// Falla con [`RefError::Conflict`] si la referencia cambió respecto a `expected`, o con
     /// [`RefError::InvalidName`] si `name` no cumple [`validate_ref_name`].
+    /// 
+    /// ## Args
+    /// * `&mut self` - Muta el Store
+    /// * `name` - Nombre de la referencia a actualizar.
+    /// * `expected` - Estado esperado de la referencia `name`: 
+    ///   - `None` si se espera que la referencia **exista** (evita sobreescribir sobre algo ya existente)
+    ///   - `Some(old_id):` si se espera que apunte a `old_id` (evita pisar la escritura de otro)
+    /// * `new` Estado final deseado:
+    ///   - `Some(new_id)`: crea o actualiza `name` para que apunte a `new_id`
+    ///   - `None`: Elimina la referencia (verificando antes con `expected` donde estaba parada)
+    /// * `reason`: descripción breve para el *log*.
     fn compare_and_swap(
         &mut self,
         name: &str,
@@ -143,21 +207,26 @@ pub trait RefStore<H: HashStrategy> {
         reason: &str,
     ) -> Result<(), RefError>;
 
-    /// Resuelve el *digest* del *commit* actual al que apunta `HEAD`, o `Ok(None)` si la rama aún no nace.
+    /// Resuelve el *digest* del *commit* actual al que apunta `HEAD`, o `Ok(None)` si la rama aún no existe.
     fn resolve_head(&self) -> Result<Option<H::Digest>, RefError> {
-        match self.head()? {
+        match self.get_head()? {
             Head::Branch(name) => self.get_ref(&name),
         }
     }
 
     /// Avanza la referencia activa en `HEAD` hacia `new_id`, verificando que antes estuviera en `expected`.
+    /// ## Parámetros
+    /// * `&mut self` - 
+    /// * `expected` - Estado esperado de la referencia, e.j. commit al que apuntaba `HEAD`
+    /// * `new_id`: nuevo id de `HEAD` para poder avanzarlo
+    /// * `reason`: descripción breve para el *log*.
     fn advance_head(
         &mut self,
         expected: Option<&H::Digest>,
         new_id: H::Digest,
         reason: &str,
     ) -> Result<(), RefError> {
-        match self.head()? {
+        match self.get_head()? {
             Head::Branch(name) => self.compare_and_swap(&name, expected, Some(new_id), reason),
         }
     }
