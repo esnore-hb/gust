@@ -139,6 +139,24 @@ pub trait WorkDir {
         collect_index::<H, S, Self>(self, store, "", &mut index)?;
         Ok(index)
     }
+
+    /// Añade archivo en `path` a un índice existente y lo guarda en el `store`
+    fn add<H: HashStrategy, S: ObjectStore>(
+        &self,
+        store: &mut S,
+        index: &mut BTreeMap<String, H::Digest>,
+        path: &str,
+    ) -> Result<(), WorkDirError>
+    where
+        Self: Sized,
+    {
+        if path.split('/').any(|part| validate_entry_name(part).is_err()) {
+            return Err(WorkDirError::InvalidName(path.to_owned()));
+        }
+        let hash = store.write(&Blob::<H>::new(self.read_file(path)?))?;
+        index.insert(path.to_owned(), hash);
+        Ok(())
+    }
 }
 
 /// Guarda los *blobs* de `dir` (y de sus subdirectorios) y anota sus rutas en `index`.
