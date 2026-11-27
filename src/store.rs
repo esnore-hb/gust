@@ -54,6 +54,42 @@ pub enum StoreError {
     Deserialize(DeserializeError),
 }
 
+
+impl fmt::Display for StoreError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Io(err) => write!(f, "error de I/O en el store de objetos: {err}"),
+            Self::NotFound => write!(f, "objeto no encontrado"),
+            Self::InvalidHeader(msg) => write!(f, "header de objeto inválido: {msg}"),
+            Self::KindMismatch { expected, found } => {
+                write!(f, "tipo de objeto inesperado: se esperaba {expected}, se encontró {found}")
+            }
+            Self::IntegrityMismatch => write!(f, "el hash del objeto no coincide con su id"),
+            Self::Deserialize(err) => write!(f, "objeto corrupto: {err}"),
+        }
+    }
+}
+
+impl Error for StoreError {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        match self {
+            Self::Io(err) => Some(err),
+            Self::Deserialize(err) => Some(err),
+            Self::NotFound
+            | Self::InvalidHeader(_)
+            | Self::KindMismatch { .. }
+            | Self::IntegrityMismatch => None,
+        }
+    }
+}
+
+impl From<io::Error> for StoreError {
+    fn from(err: io::Error) -> Self {
+        Self::Io(err)
+    }
+}
+
+
 /// # ObjectStore
 /// Define el almacenamiento de objetos indexados por contenido ([`GitObject`]).
 ///

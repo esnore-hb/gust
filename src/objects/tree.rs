@@ -168,6 +168,29 @@ pub struct Tree<H: HashStrategy> {
     pub entries: Vec<TreeEntry<H>>,
 }
 
+
+impl<H: HashStrategy> Tree<H> {
+    /// Construye un [`Tree`] válido y ordenado: entradas ordenadas por los bytes del nombre,
+    /// sin nombres repetidos ni inválidos (ver [`validate_entry_name`]).
+    ///
+    /// Un [`Tree`] armado a mano con nombres repetidos se serializa sin error, pero su lectura
+    /// posterior falla; este constructor detecta ese caso al crearlo.
+    pub fn from_entries(mut entries: Vec<TreeEntry<H>>) -> Result<Self, DeserializeError> {
+        for entry in &entries {
+            validate_entry_name(&entry.name)?;
+        }
+        entries.sort_unstable_by(|a, b| a.name.as_bytes().cmp(b.name.as_bytes()));
+        if entries.windows(2).any(|w| w[0].name == w[1].name) {
+            return Err(DeserializeError::InvalidFormat(
+                "entradas de tree duplicadas",
+            ));
+        }
+        Ok(Self { entries })
+    }
+}
+
+
+
 impl<H: HashStrategy> Serializable for Tree<H> {
     /// Formato: `<entry_1><entry_2>...<entry_n>`, ver [`TreeEntry`].
     ///
