@@ -6,7 +6,7 @@
 //! *backend* concreto.
 //!
 //! El *index* se recibe como un mapa `ruta -> id del blob`, con rutas relativas a la raíz
-//! del repositorio y separadas por `/` (ej. `src/main.rs`). Los [`crate::core::Blob`]
+//! del repositorio y separadas por `/` (ej. `src/main.rs`). Los [`crate::objects::Blob`]
 //! referenciados deben estar guardados antes de crear el *commit*.
 
 use std::{
@@ -16,8 +16,8 @@ use std::{
 };
 
 use crate::{
-    objects::{Commit, EntryKind, Meta, Tree, TreeEntry},
     hash::HashStrategy,
+    objects::{Commit, EntryKind, Meta, Tree, TreeEntry},
     refs::{RefError, RefStore},
     store::{ObjectStore, StoreError},
 };
@@ -56,8 +56,7 @@ impl fmt::Display for CommitError {
                 write!(f, "la ruta {path:?} es archivo y directorio a la vez")
             }
             Self::MissingBlob(path) => write!(f, "falta el blob del archivo {path:?}"),
-            // StoreError todavía no implementa Display
-            Self::Store(err) => write!(f, "error en el almacenamiento de objetos: {err:?}"),
+            Self::Store(err) => write!(f, "{err}"),
             Self::Ref(err) => write!(f, "{err}"),
         }
     }
@@ -66,6 +65,7 @@ impl fmt::Display for CommitError {
 impl Error for CommitError {
     fn source(&self) -> Option<&(dyn Error + 'static)> {
         match self {
+            Self::Store(err) => Some(err),
             Self::Ref(err) => Some(err),
             _ => None,
         }
