@@ -40,11 +40,11 @@ cargo fmt --check           # checks formatting (does not reformat)
 - `src/store.rs`: content-addressed storage (`ObjectStore`, `StoreError`). Backends implement
   `put_raw`/`get_raw`/`contains` and get integrity-checked `write`/`read` for free.
 - `src/refs.rs`: mutable state for `HEAD` and branches (`RefStore`, `Head`, `RefError`).
-- `src/workdir.rs`: working directory (`WorkDir`, `WorkDirMut`); `snapshot` turns it into
-  stored blobs and trees.
+- `src/workdir.rs`: working directory (`WorkDir`, `WorkDirMut`); `snapshot` stores its blobs
+  and returns the index (`path -> blob digest`).
 - `src/commit.rs`: builds trees from an index (`path -> blob digest`) and records commits
-  (`create_commit`); the branch only advances at the end, via `advance_head`.
-  **Pending:** it overlaps with `WorkDir::snapshot` (both build trees); decide how to merge them.
+  (`create_commit`); it is the only place that builds trees. The branch only advances at the
+  end, via `advance_head`.
 - `src/backends/`: concrete implementations (`fs`, `mem`, `hash`). The only place where
   external dependencies are allowed.
 - Traits modules (`hash`, `store`, `refs`, `workdir`) never depend on `backends`.

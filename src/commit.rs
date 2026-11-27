@@ -7,7 +7,8 @@
 //!
 //! El *index* se recibe como un mapa `ruta -> id del blob`, con rutas relativas a la raíz
 //! del repositorio y separadas por `/` (ej. `src/main.rs`). Los [`crate::objects::Blob`]
-//! referenciados deben estar guardados antes de crear el *commit*.
+//! referenciados deben estar guardados antes de crear el *commit*; es justo lo que entrega
+//! [`crate::workdir::WorkDir::snapshot`].
 
 use std::{
     collections::{BTreeMap, btree_map},
@@ -17,7 +18,7 @@ use std::{
 
 use crate::{
     hash::HashStrategy,
-    objects::{Commit, EntryKind, Meta, Tree, TreeEntry},
+    objects::{Commit, EntryKind, Meta, Tree, TreeEntry, validate_entry_name},
     refs::{RefError, RefStore},
     store::{ObjectStore, StoreError},
 };
@@ -101,11 +102,11 @@ fn insert_path<'a, D>(
     path: &'a str,
     digest: &'a D,
 ) -> Result<(), CommitError> {
-    // "" cubre las rutas vacías, absolutas, con "//" o terminadas en "/".
-    // `\0` se rechaza porque es el separador dentro de un TreeEntry serializado.
+    // Mismas reglas que un TreeEntry; "" cubre las rutas vacías, absolutas, con "//" o
+    // terminadas en "/"
     if path
         .split('/')
-        .any(|part| matches!(part, "" | "." | "..") || part.contains('\0'))
+        .any(|part| validate_entry_name(part).is_err())
     {
         return Err(CommitError::InvalidPath(path.to_owned()));
     }

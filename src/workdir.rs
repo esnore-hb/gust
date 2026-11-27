@@ -1,5 +1,5 @@
 //! Abstrae el **directorio de trabajo**: los archivos que el usuario edita y que se convierten
-//! en un *snapshot* ([`Tree`]) al hacer *commit*.
+//! en un *index* (`ruta -> id del blob`) que [`crate::commit::create_commit`] registra.
 //!
 //! ## Convención de rutas
 //! Las rutas son `&str` relativas a la raíz del directorio de trabajo, con componentes separados
@@ -8,20 +8,21 @@
 //!
 //! ## Diseño
 //! Igual que [`ObjectStore`], el *backend* implementa solo lo mínimo ([`WorkDir::read_dir`] y
-//! [`WorkDir::read_file`]) y obtiene gratis [`WorkDir::snapshot`], que recorre el directorio y
-//! guarda sus [`Blob`] y [`Tree`].
+//! [`WorkDir::read_file`]) y obtiene gratis [`WorkDir::snapshot`], que recorre el directorio,
+//! guarda sus [`Blob`] y devuelve el *index*. Los [`Tree`](crate::objects::Tree) los
+//! construye solo [`crate::commit::build_tree`], a partir de ese *index*.
 //!
 //! ## Limitaciones conocidas (post-MVP)
 //! - **Solo archivos regulares y directorios:** los *symlinks* y otros tipos se omiten.
 //! - **Sin caché de *stat*:** cada *snapshot* lee y hashea todos los archivos (Git usa un
 //!   *index* con fechas y tamaños para saltarse archivos que no cambiaron).
-//! - En [`build_tree`] se llama a write recursivamente por cada `item`. Si hay un error de escritura
-//!   en uno de los items estos (en principio) permanecen escritos.
+//! - Si una escritura falla a mitad del recorrido, los [`Blob`] ya guardados permanecen en el
+//!   almacén (sin nada que los referencie).
 
-use std::{error::Error, fmt, io};
+use std::{collections::BTreeMap, error::Error, fmt, io};
 
-use crate::objects::{Blob, EntryKind, Tree, TreeEntry, validate_entry_name};
 use crate::hash::HashStrategy;
+use crate::objects::{Blob, validate_entry_name};
 use crate::store::{ObjectStore, StoreError};
 
 /// # FileKind
@@ -52,8 +53,8 @@ pub enum WorkDirError {
     Io(io::Error),
     /// La ruta indicada no existe
     NotFound(String),
-    /// Un nombre o ruta no es válido como entrada de [`Tree`] (ej. `".."`) o choca con otra
-    /// entrada (ej. un archivo con el mismo nombre que un directorio)
+    /// Un nombre o ruta no es válido como entrada de [`Tree`](crate::objects::Tree)
+    /// (ej. `".."`) o choca con otra entrada (ej. un archivo listado dos veces)
     InvalidName(String),
     /// Error al guardar objetos durante un *snapshot*
     Store(StoreError),
@@ -120,78 +121,64 @@ pub trait WorkDir {
     /// Lee el contenido completo del archivo `path`.
     fn read_file(&self, path: &str) -> Result<Vec<u8>, WorkDirError>;
 
-    /// Recorre el directorio de trabajo, guarda un [`Blob`] por archivo y un [`Tree`] por
-    /// directorio en `store`, y devuelve el *digest* del [`Tree`] raíz.
+    /// Recorre el directorio de trabajo, guarda un [`Blob`] por archivo en `store` y devuelve
+    /// el *index* resultante (`ruta -> id del blob`), listo para [`crate::commit::create_commit`].
     ///
-    /// Los subdirectorios vacíos (o que solo contienen subdirectorios vacíos) se omiten, igual
-    /// que en Git; la raíz sí puede quedar vacía. Como [`ObjectStore::write`] no reescribe lo
-    /// que ya existe, solo se escriben los objetos nuevos.
+    /// Los directorios vacíos no aparecen en el *index*, así que no llegan al *commit*. Como
+    /// [`ObjectStore::write`] no reescribe lo que ya existe, solo se escriben los *blobs* nuevos.
     ///
     /// `where Self: Sized` mantiene el trait usable como `dyn WorkDir` pese a ser genérico.
     fn snapshot<H: HashStrategy, S: ObjectStore>(
         &self,
         store: &mut S,
-    ) -> Result<H::Digest, WorkDirError>
+    ) -> Result<BTreeMap<String, H::Digest>, WorkDirError>
     where
         Self: Sized,
     {
-        let root = build_tree::<H, S, Self>(self, store, "")?;
-        Ok(store.write(&root)?)
+        let mut index = BTreeMap::new();
+        collect_index::<H, S, Self>(self, store, "", &mut index)?;
+        Ok(index)
     }
 }
 
-/// Construye (sin guardarlo) el [`Tree`] de `dir`, guardando antes sus *blobs* y sus
-/// subdirectorios no vacíos.
-fn build_tree<H, S, W>(wd: &W, store: &mut S, dir: &str) -> Result<Tree<H>, WorkDirError>
+/// Guarda los *blobs* de `dir` (y de sus subdirectorios) y anota sus rutas en `index`.
+fn collect_index<H, S, W>(
+    wd: &W,
+    store: &mut S,
+    dir: &str,
+    index: &mut BTreeMap<String, H::Digest>,
+) -> Result<(), WorkDirError>
 where
     H: HashStrategy,
     S: ObjectStore,
     W: WorkDir + ?Sized,
 {
-    let listing = wd.read_dir(dir)?;
-    let mut entries = Vec::with_capacity(listing.len());
-
-    for item in listing {
+    for item in wd.read_dir(dir)? {
         let path = join_path(dir, &item.name);
         if validate_entry_name(&item.name).is_err() {
             return Err(WorkDirError::InvalidName(path));
         }
         match item.kind {
             FileKind::File => {
-                let blob = Blob::<H>::new(wd.read_file(&path)?);
-                let hash = store.write(&blob)?;
-                entries.push(TreeEntry {
-                    kind: EntryKind::Blob,
-                    name: item.name,
-                    hash,
-                });
-            }
-            FileKind::Dir => {
-                let subtree = build_tree::<H, S, W>(wd, store, &path)?;
-                // Git no versiona directorios vacíos: no se guarda ni se referencia
-                if subtree.entries.is_empty() {
-                    continue;
+                // Un backend que lista dos veces la misma entrada
+                if index.contains_key(&path) {
+                    return Err(WorkDirError::InvalidName(path));
                 }
-                let hash = store.write(&subtree)?;
-                entries.push(TreeEntry {
-                    kind: EntryKind::Tree,
-                    name: item.name,
-                    hash,
-                });
+                let hash = store.write(&Blob::<H>::new(wd.read_file(&path)?))?;
+                index.insert(path, hash);
             }
+            FileKind::Dir => collect_index::<H, S, W>(wd, store, &path, index)?,
         }
     }
-
-    // Ordena y detecta nombres repetidos (un backend que lista dos veces la misma entrada)
-    Tree::from_entries(entries).map_err(|_| WorkDirError::InvalidName(dir.to_owned()))
+    Ok(())
 }
 
 /// # WorkDirMut
 /// Extiende [`WorkDir`] con escritura (**post-MVP**, solo firmas).
 ///
-/// Servirá para restaurar (*checkout*) un [`Tree`] en el directorio de trabajo. Antes de
-/// escribir habrá que calcular un diff entre `HEAD`, el destino y el directorio actual para no
-/// pisar cambios locales sin guardar.
+/// Servirá para restaurar (*checkout*) un [`Tree`](crate::objects::Tree) en el directorio de
+/// trabajo. Antes de escribir habrá que calcular un diff entre `HEAD`, el destino y el
+/// directorio actual para no pisar cambios locales sin guardar.
 pub trait WorkDirMut: WorkDir {
     /// Crea o reemplaza el archivo `path` con `content`, creando los directorios padres.
     fn write_file(&mut self, path: &str, content: &[u8]) -> Result<(), WorkDirError>;
