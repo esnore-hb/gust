@@ -5,6 +5,7 @@ mod refs;
 mod workdir;
 
 mod objects;
+mod backends;
 
 use objects::{Blob};
 
