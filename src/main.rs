@@ -2,6 +2,7 @@ mod store;
 mod hash;
 mod commit;
 mod demo;
+mod log;
 mod refs;
 mod workdir;
 
