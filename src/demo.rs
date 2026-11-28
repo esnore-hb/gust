@@ -10,8 +10,8 @@
 use std::{collections::BTreeMap, error::Error};
 
 use crate::{
-    commit::create_commit, hash::HashStrategy, objects::Meta, refs::RefStore, store::ObjectStore,
-    workdir::WorkDirMut,
+    commit::create_commit, hash::HashStrategy, log::first_parent_log, objects::Meta,
+    refs::RefStore, store::ObjectStore, workdir::WorkDirMut,
 };
 
 /// Ruta del archivo que el flujo crea entre ambos *commits*.
@@ -47,6 +47,7 @@ where
 
     // Primer commit, sin padre
     let first = create_commit::<H, S, R>(store, refs, &index, "initial commit", empty_meta())?;
+    println!("create commit {:?}\n\tinitial commit", first);
 
     // Crea un archivo nuevo en el directorio de trabajo
     workdir.write_file(NEW_FILE, b"Hello world\n")?;
@@ -56,6 +57,13 @@ where
 
     // Segundo commit, con `first` como padre
     let second = create_commit::<H, S, R>(store, refs, &index, "Add hello.txt", empty_meta())?;
+    println!("create commit {:?}\n\tAdd hello.txt", second);
+
+    // Recorre el historial desde HEAD hasta el commit raíz
+    for entry in first_parent_log::<H, S>(store, refs.resolve_head()?) {
+        let (id, commit) = entry?;
+        println!("read commit {:?}\n\t{}", id, commit.message);
+    }
 
     Ok((first, second))
 }
